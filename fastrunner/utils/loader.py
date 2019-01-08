@@ -1,3 +1,4 @@
+import copy
 import datetime
 import functools
 import importlib
@@ -12,7 +13,7 @@ from threading import Thread
 
 import requests
 import yaml
-from django.utils.html import format_html
+from bs4 import BeautifulSoup
 from httprunner import HttpRunner, logger
 from requests.cookies import RequestsCookieJar
 from requests_toolbelt import MultipartEncoder
@@ -125,7 +126,7 @@ class FileLoader(object):
         return debugtalk_module
 
 
-def parse_tests(testcases, debugtalk, config=None):
+def parse_tests(testcases, debugtalk, name=None, config=None):
     """get test case structure
         testcases: list
         config: none or dict
@@ -139,7 +140,8 @@ def parse_tests(testcases, debugtalk, config=None):
     }
     testset = {
         "config": {
-            "name": testcases[-1]["name"]
+            "name": testcases[-1]["name"],
+            "variables": []
         },
         "teststeps": testcases,
     }
@@ -147,27 +149,45 @@ def parse_tests(testcases, debugtalk, config=None):
     if config:
         testset["config"] = config
 
+    if name:
+        testset["config"]["name"] = name
+
+    global_variables = []
+
+    for variables in models.Variables.objects.all().values("key", "value"):
+        if testset["config"].get("variables"):
+            for content in testset["config"]["variables"]:
+                if variables["key"] not in content.keys():
+                    global_variables.append({variables["key"]: variables["value"]})
+        else:
+            global_variables.append({variables["key"]: variables["value"]})
+
+    if not testset["config"].get("variables"):
+        testset["config"]["variables"] = global_variables
+    else:
+        testset["config"]["variables"].extend(global_variables)
+
     testset["config"]["refs"] = refs
 
-    for teststep in testcases:
-        # handle files
-        if "files" in teststep["request"].keys():
-            fields = {}
-
-            if "data" in teststep["request"].keys():
-                fields.update(teststep["request"].pop("data"))
-
-            for key, value in teststep["request"].pop("files").items():
-                file_binary = models.FileBinary.objects.get(name=value).body
-                # file_path = os.path.join(tempfile.mkdtemp(prefix='File'), value)
-                # FileLoader.dump_binary_file(file_path, file_binary)
-                fields[key] = (value, file_binary)
-
-            teststep["request"]["data"] = MultipartEncoder(fields)
-            try:
-                teststep["request"]["headers"]["Content-Type"] = teststep["request"]["data"].content_type
-            except KeyError:
-                teststep["request"].setdefault("headers", {"Content-Type": teststep["request"]["data"].content_type})
+    # for teststep in testcases:
+    #     # handle files
+    #     if "files" in teststep["request"].keys():
+    #         fields = {}
+    #
+    #         if "data" in teststep["request"].keys():
+    #             fields.update(teststep["request"].pop("data"))
+    #
+    #         for key, value in teststep["request"].pop("files").items():
+    #             file_binary = models.FileBinary.objects.get(name=value).body
+    #             # file_path = os.path.join(tempfile.mkdtemp(prefix='File'), value)
+    #             # FileLoader.dump_binary_file(file_path, file_binary)
+    #             fields[key] = (value, file_binary)
+    #
+    #         teststep["request"]["data"] = MultipartEncoder(fields)
+    #         try:
+    #             teststep["request"]["headers"]["Content-Type"] = teststep["request"]["data"].content_type
+    #         except KeyError:
+    #             teststep["request"].setdefault("headers", {"Content-Type": teststep["request"]["data"].content_type})
 
     return testset
 
@@ -187,7 +207,7 @@ def load_debugtalk(project):
     return debugtalk
 
 
-def debug_suite(suite, pk, project):
+def debug_suite(suite, project, obj, config=None, save=True):
     """debug suite
            suite :list
            pk: int
@@ -195,41 +215,36 @@ def debug_suite(suite, pk, project):
     """
     if len(suite) == 0:
         return TEST_NOT_EXISTS
-    body = None
-    # config
-    if pk:
-        config = models.Config.objects.get(id=pk)
-        body = eval(config.body)
 
     debugtalk = load_debugtalk(project)
 
-    testsuite = []
-    for testcase in suite:
-        testsuite.append(parse_tests(testcase, debugtalk, config=body))
+    test_sets = []
+
+    for index in range(len(suite)):
+        # copy.deepcopy 修复引用bug
+        testcases = copy.deepcopy(parse_tests(suite[index], debugtalk, name=obj[index]['name'], config=config))
+        test_sets.append(testcases)
 
     kwargs = {
         "failfast": False
     }
-
     runner = HttpRunner(**kwargs)
-    runner.run(testsuite)
-    return parse_summary(runner.summary)
+    runner.run(test_sets)
+    summary = parse_summary(runner.summary)
+
+    if save:
+        save_summary("", summary, project, type=1)
+
+    return summary
 
 
-def debug_api(api, pk, project):
+def debug_api(api, project, name=None, config=None, save=True):
     """debug api
         api :dict or list
-        pk: int
         project: int
     """
     if len(api) == 0:
         return TEST_NOT_EXISTS
-
-    body = None
-    # config
-    if pk:
-        config = models.Config.objects.get(id=pk)
-        body = eval(config.body)
 
     # testcases
     if isinstance(api, dict):
@@ -238,7 +253,7 @@ def debug_api(api, pk, project):
         """
         api = [api]
 
-    testcase_list = [parse_tests(api, load_debugtalk(project), config=body)]
+    testcase_list = [parse_tests(api, load_debugtalk(project), name=name, config=config)]
 
     kwargs = {
         "failfast": False
@@ -246,10 +261,16 @@ def debug_api(api, pk, project):
 
     runner = HttpRunner(**kwargs)
     runner.run(testcase_list)
-    return parse_summary(runner.summary)
+
+    summary = parse_summary(runner.summary)
+
+    if save:
+        save_summary("", summary, project, type=1)
+
+    return summary
 
 
-def load_test(test):
+def load_test(test, project=None):
     """
     format testcase
     """
@@ -261,9 +282,15 @@ def load_test(test):
 
     except KeyError:
         if 'case' in test.keys():
-            case_step = models.CaseStep.objects.get(id=test['id'])
+            if test["body"]["method"] == "config":
+                case_step = models.Config.objects.get(name=test["body"]["name"], project=project)
+            else:
+                case_step = models.CaseStep.objects.get(id=test['id'])
         else:
-            case_step = models.API.objects.get(id=test['id'])
+            if test["body"]["method"] == "config":
+                case_step = models.Config.objects.get(name=test["body"]["name"], project=project)
+            else:
+                case_step = models.API.objects.get(id=test['id'])
 
         testcase = eval(case_step.body)
         name = test['body']['name']
@@ -274,7 +301,7 @@ def load_test(test):
     return testcase
 
 
-def async(func):
+def back_async(func):
     """异步执行装饰器
     """
 
@@ -305,6 +332,10 @@ def parse_summary(summary):
                 if isinstance(value, RequestsCookieJar):
                     record["meta_data"]["response"][key] = requests.utils.dict_from_cookiejar(value)
 
+            if "text/html" in record["meta_data"]["response"]["content_type"]:
+                record["meta_data"]["response"]["content"] = \
+                    BeautifulSoup(record["meta_data"]["response"]["content"], features="html.parser").prettify()
+
     return summary
 
 
@@ -324,17 +355,17 @@ def save_summary(name, summary, project, type=2):
     })
 
 
-@async
-def async_debug_api(api, pk, project, name):
+@back_async
+def async_debug_api(api, project, name):
     """异步执行api
     """
-    summary = debug_api(api, pk, project)
+    summary = debug_api(api, project, save=False)
     save_summary(name, summary, project)
 
 
-@async
-def async_debug_suite(suite, pk, project, name):
+@back_async
+def async_debug_suite(suite, project, report, obj, config=None):
     """异步执行suite
     """
-    summary = debug_suite(suite, pk, project)
-    save_summary(name, summary, project)
+    summary = debug_suite(suite, project, obj, config=config, save=False)
+    save_summary(report, summary, project)

@@ -8,7 +8,7 @@
     <meta name='robots' content='noodp, noydir'/>
     <meta name='viewport' content='width=device-width, initial-scale=1'/>
     <meta id="timeStampFormat" name="timeStampFormat" content='MMM d, yyyy hh:mm:ss a'/>
-
+    {% load custom_tags %}
     <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600' rel='stylesheet' type='text/css'>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
@@ -28,6 +28,18 @@
         .card-panel.environment th:first-child {
             width: 30%;
         }
+
+        .code-block {
+
+            border: 1px solid #ebedef;
+            border-radius: 4px;
+            color: #222 !important;
+            font-family: Consolas, monospace;
+            font-size: 13px;
+            margin: 0;
+            padding: 7px 10px;
+            overflow: auto;
+        }
     </style>
 </head>
 
@@ -38,7 +50,7 @@
 
 <nav>
     <div class="nav-wrapper">
-        <a href="#!" class="brand-logo blue darken-3">Extent</a>
+        <a href="#!" class="brand-logo blue darken-3">Report</a>
 
         <!-- slideout menu -->
         <ul id='slide-out' class='side-nav fixed hide-on-med-and-down'>
@@ -47,8 +59,6 @@
             </li>
             <li class='waves-effect'><a href='#!' view='category-view' onclick="configureView(1)"><i
                     class='material-icons'>label_outline</i></a></li>
-            <li class='waves-effect'><a href='#!' onclick="configureView(-1);chartsView('dashboard');"
-                                        view='dashboard-view'><i class='material-icons'>track_changes</i></a></li>
         </ul>
 
         <!-- report name -->
@@ -61,7 +71,7 @@
         <ul id='nav-mobile' class='right hide-on-med-and-down nav-right'>
             <li>
                 <a href='#!'>
-                    <span class='label suite-start-time blue darken-3'>{{ time.start_datetime }}</span>
+                    <span class='label suite-start-time blue darken-3'>{{ time.start_at|convert_timestamp }}</span>
                 </a>
             </li>
             <li>
@@ -106,28 +116,7 @@
                                 class='material-icons'>clear</i></a></li>
                     </ul>
                 </div>
-                <!-- test toggle -->
 
-                <!-- category toggle -->
-                <div class='chip transparent'>
-                    <a class='dropdown-button category-toggle' data-activates='category-toggle'
-                       data-constrainwidth='false' data-beloworigin='true' data-hover='true' href='#'>
-                        <i class='material-icons'>local_offer</i> Category
-                    </a>
-                    <ul id='category-toggle' class='dropdown-content'>
-                        {% for test_suite_summary in details %}
-                            <li><a href='#'>{{ test_suite_summary.name }}</a>
-                            </li>
-                        {% endfor %}
-
-
-                        <li class='divider'></li>
-                        <li class='clear'><a href='#!' clear='true'>Clear Filters</a></li>
-                    </ul>
-                </div>
-                <!-- category toggle -->
-
-                <!-- clear filters -->
                 <div class='chip transparent hide'>
                     <a class='' id='clear-filters' alt='Clear Filters' title='Clear Filters'>
                         <i class='material-icons'>close</i> Clear
@@ -235,7 +224,7 @@
                         </div>
                         <div class='test-content hide'>
                             <div class='test-time-info'>
-                                <span class='label start-time'>{{ test_suite_summary.time.start_at }}</span>
+                                <span class='label start-time'>{{ test_suite_summary.time.start_at|convert_timestamp }}</span>
                                 <span class='label end-time'>{{ test_suite_summary.time.duration|floatformat:3 }} seconds</span>
                             </div>
                             <div class='test-desc'>Pass: {{ test_suite_summary.stat.successes }} ;
@@ -295,35 +284,38 @@
                                             </thead>
                                             <tbody>
                                             <tr class='info' status='info'>
-                                                <td class='status info' title='info' alt='info'><i
+                                                <td class='status info' title='接口地址' alt='info'><i
                                                         class='material-icons'>low_priority</i></td>
                                                 <td class='timestamp'>url</td>
                                                 <td class='step-details'>{{ record.meta_data.request.url }}</td>
                                             </tr>
                                             <tr class='info' status='info'>
-                                                <td class='status info' title='info' alt='info'><i
+                                                <td class='status info' title='请求方式' alt='info'><i
                                                         class='material-icons'>low_priority</i></td>
                                                 <td class='timestamp'>method</td>
                                                 <td class='step-details'>{{ record.meta_data.request.method }}</td>
                                             </tr>
-                                            <tr class='info' status='info'>
-                                                <td class='status info' title='info' alt='info'><i
+                                            <tr class='pass' status='pass'>
+                                                <td class='status pass' title='状态码' alt='pass'><i
                                                         class='material-icons'>low_priority</i></td>
                                                 <td class='timestamp'>status_code</td>
                                                 <td class='step-details'>{{ record.meta_data.response.status_code }}</td>
                                             </tr>
                                             {% for key, value in record.meta_data.request.items %}
                                                 {% if key != 'url' and key != 'method' and key != 'start_timestamp' %}
-                                                    <tr class='log' status='debug'>
-                                                        <td class='status debug' title='debug' alt='debug'><i
+                                                    <tr class='warning' status='warning'>
+                                                        <td class='status warning' title='{{ key }}' alt='warning'><i
                                                                 class='material-icons'>low_priority</i></td>
-                                                        <td class='timestamp'>{{ key }}</td>
+
+                                                        {% if key == "headers" %}
+                                                            <td class='timestamp'>req_header</td>
+                                                        {% else %}
+                                                            <td class='timestamp'>{{ key }}</td>
+                                                        {% endif %}
                                                         <td class='step-details'>
                                                             {% if key == "headers" %}
                                                                 {% for header_key, header_value in record.meta_data.request.headers.items %}
-                                                                    <div>
-                                                                        <strong>{{ header_key }}</strong>: {{ header_value }}
-                                                                    </div>
+                                                                    <pre class="code-block">{{ header_key }} &nbsp;&nbsp;{{ header_value }}</pre>
                                                                 {% endfor %}
                                                             {% else %}
                                                                 {{ value }}
@@ -335,23 +327,29 @@
 
                                             {% for key, value in record.meta_data.response.items %}
                                                 {% if key != "content" and key != "json" and key != "elapsed_ms" and key != "response_time_ms" and key != "content_size" and key != "content_type" and key != "status_code" and key != "reason" and key != "ok" and key != "encoding" and key != "url" %}
-                                                    <tr class='log' status='debug'>
-                                                        <td class='status debug' title='debug' alt='debug'><i
+                                                    <tr class='error' status='error'>
+                                                        <td class='status error' title='{{ key }}' alt='error'><i
                                                                 class='material-icons'>low_priority</i></td>
-                                                        <td class='timestamp'>{{ key }}</td>
+                                                        {% if key == "headers" %}
+                                                            <td class='timestamp'>rsp_header</td>
+                                                        {% else %}
+                                                            <td class='timestamp'>{{ key }}</td>
+                                                        {% endif %}
                                                         <td class='step-details'>
                                                             {% if key == "headers" %}
                                                                 {% for header_key, header_value in record.meta_data.response.headers.items %}
-                                                                    <div>
-                                                                        <strong>{{ header_key }}</strong>: {{ header_value }}
-                                                                    </div>
+                                                                    <pre class="code-block">{{ header_key }} &nbsp;&nbsp;{{ header_value }}</pre>
                                                                 {% endfor %}
                                                             {% elif key == "text" %}
                                                                 {% if  record.meta_data.response.content_type == 'image' %}
                                                                     <img src="{{ record.meta_data.response.content }}"/>
                                                                 {% else %}
-                                                                    <pre>{{ record.meta_data.response.text }}</pre>
+                                                                    <pre class="code-block">{{ record.meta_data.response.content|json_dumps }}</pre>
                                                                 {% endif %}
+                                                            {% elif key == "cookies" %}
+                                                                {% for cookies_key, cookies_value in record.meta_data.response.cookies.items %}
+                                                                    <pre>{{ cookies_key }} &nbsp;&nbsp;{{ cookies_value }}</pre>
+                                                                {% endfor %}
                                                             {% else %}
                                                                 {{ value }}
                                                             {% endif %}
@@ -360,16 +358,13 @@
                                                 {% endif %}
                                             {% endfor %}
 
-                                            <tr class='log' status='pass'>
-                                                <td class='status pass' title='pass' alt='pass'><i
+                                            <tr class='pass' status='pass'>
+                                                <td class='status pass' title='断言' alt='pass'><i
                                                         class='material-icons'>low_priority</i></td>
                                                 <td class='timestamp'>Validators</td>
                                                 <td class='step-details'>
                                                     {% for validator in record.meta_data.validators %}
-                                                        <div>
-                                                            <strong>{{ validator.comparator }}:</strong>[ {{ validator.expect }}
-                                                            ,&nbsp;&nbsp;{{ validator.check_value }} ]
-                                                        </div>
+                                                        <pre class="code-block">check:{{ validator.check }} -{{ validator.comparator }}:[{{ validator.expect }},&nbsp;{{ validator.check_value }}]</pre>
                                                     {% endfor %}
                                                 </td>
                                             </tr>
@@ -393,12 +388,12 @@
 
 
                                             {% if record.attachment %}
-                                                <tr class='log' status='fail'>
-                                                    <td class='status fail' title='fail' alt='fail'><i
+                                                <tr class='fail' status='fail'>
+                                                    <td class='status fail' title='exception' alt='fail'><i
                                                             class='material-icons'>cancel</i></td>
                                                     <td class='timestamp'>exception:</td>
                                                     <td class='step-details'>
-                                                        <pre>{{ record.attachment }}</pre>
+                                                        <pre class="code-block">{{ record.attachment }}</pre>
                                                     </td>
                                                 </tr>
                                             {% endif %}
@@ -444,24 +439,6 @@
     <!-- test view -->
     <div id='category-view' class='view hide'>
 
-        <section id='controls'>
-            <div class='controls grey lighten-4'>
-                <!-- search -->
-                <div class='chip transparent' alt='Search Tests' title='Search Tests'>
-                    <a href="#" class='search-div'>
-                        <i class='material-icons'>search</i> Search
-                    </a>
-
-                    <div class='input-field left hide'>
-                        <input tyle="color: red;" id='search-tests' type='text'
-                               class='validate browser-default'
-                               placeholder='Search Tests...'>
-                    </div>
-
-                </div>
-                <!-- search -->
-            </div>
-        </section>
 
         <div class='subview-left left'>
 
@@ -505,7 +482,7 @@
                                     <tbody>
                                     {% for test_suite_summary in details %}
                                         <tr style="border: 1px solid #49cc90; background-color: rgba(73, 204, 144, .1)">
-                                            <td>{{ test_suite_summary.time.start_at }}</td>
+                                            <td>{{ test_suite_summary.time.start_at|convert_timestamp }}</td>
                                             <td class='linked'
                                                 test-id='{{ test_suite_summary.name }}_{{ forloop.counter }}'>{{ test_suite_summary.name }}</td>
                                             {% if test_suite_summary.success == True %}
@@ -609,87 +586,7 @@
             </div>
         </div>
     </div>
-    <!-- category view -->
 
-    <div id='dashboard-view' class='view hide'>
-        <div class='card-panel transparent np-v'>
-            <h5>Dashboard</h5>
-
-            <div class='row'>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Pass
-                        <div class='panel-lead'>{{ stat.successes }}</div>
-                    </div>
-                </div>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Fail
-                        <div class='panel-lead'>{{ stat.failures }}</div>
-                    </div>
-                </div>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Error
-                        <div class='panel-lead'>{{ stat.errors }}</div>
-                    </div>
-                </div>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Skip
-                        <div class='panel-lead'>{{ stat.skipped }}</div>
-                    </div>
-                </div>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Start
-                        <div class='panel-lead'>{{ time.start_datetime }}</div>
-                    </div>
-                </div>
-                <div class='col s2'>
-                    <div class='card-panel r'>
-                        Time Taken
-                        <div class='panel-lead'>{{ time.duration|floatformat:3 }} seconds</div>
-                    </div>
-                </div>
-                <div class='col s4'>
-                    <div class='card-panel'>
-                        <span class='right label cyan white-text'>Categories</span>
-                        <p>&nbsp;</p>
-                        <table>
-                            <tr>
-                                <th>Name</th>
-                                <th>Passed</th>
-                                <th>Failed</th>
-                                <th>Errored</th>
-                                <th>Skipped</th>
-                            </tr>
-                            <tr>
-                                <td>All Suites</td>
-                                <td class="pass">{{ stat.successes }}</td>
-                                <td class="fail">{{ stat.failures }}</td>
-                                <td class="error">{{ stat.errors }}</td>
-                                <td class="skip">{{ stat.skipped }}</td>
-                            </tr>
-
-                            {% for test_suite_summary in details %}
-                                <tr>
-                                    <td>{{ test_suite_summary.name }}</td>
-                                    <td class="pass">{{ test_suite_summary.stat.successes }}</td>
-                                    <td class="fail">{{ test_suite_summary.stat.failures }}</td>
-                                    <td class="error">{{ test_suite_summary.stat.errors }}</td>
-                                    <td class="skip">{{ test_suite_summary.stat.skipped }}</td>
-                                </tr>
-                            {% endfor %}
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- dashboard view -->
-    <!-- testrunner-logs view -->
-    <!-- container -->
 </div>
 <script>
     var test_suite_success = 0;
